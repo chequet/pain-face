@@ -9,10 +9,10 @@ from menpofit.aam import HolisticAAM
 from menpo.feature import fast_dsift
 from menpofit.aam import LucasKanadeAAMFitter, WibergInverseCompositional
 from menpodetect import load_dlib_frontal_face_detector
+import sys
 
-def AAMfitter(training_path):
-	# load and prepare training images
-	training_images = prepare_images(training_path)
+def AAMfitter(training_images):
+	# assume training images already loaded and preprocessed 
 	# train AAM
 	print('Now generating Active Appearance Model...')
 	aam = HolisticAAM(training_images, group='landmarks', diagonal=150,
@@ -21,11 +21,11 @@ def AAMfitter(training_path):
 	# generate AAM fitter
 	print('Now generating fitter...')
 	fitter = LucasKanadeAAMFitter(aam)
-	return fitter, training_images
+	return fitter
 
 def generate_capp(fitter, image):
-	print('generating canonical appearance of file ', image.path)
-	# NB to save time we assume image is already preprocessed
+	#print('generating canonical appearance of file ', image.path)
+	# we assume image is already preprocessed
 	# Load detector for face area
 	detect = load_dlib_frontal_face_detector()
 	# Detectbounding box
@@ -44,8 +44,11 @@ def generate_normcapps(fitter, training_images):
 	print("Generating canonical appearance vectors...")
 	# again assume image is already preprocessed
 	capps = []
-	for img in training_images:
-		capp = generate_capp(fitter, image)
+	for i in range(len(training_images)):
+		img = training_images[i]
+		j = (i+1)/len(training_images)
+		sys.stdout.write("[%-20s] %d%% " % ('='*int(20*j), 100*j))
+		capp = generate_capp(fitter, img)
 		# normalise this for classifier input
 		capp = capp/(np.max(capp))
 		capps.append(capp)
