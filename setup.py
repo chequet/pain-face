@@ -1,6 +1,7 @@
 import menpo.io as mio
 from conversion import landmarkConverter
 from os import walk
+import numpy as np
 
 def process(image, crop_proportion=0.2, max_diagonal=400):
 	# converts images to B&W, adds landmarks, crops to landmarks and 
@@ -51,44 +52,55 @@ def prepare_labels(trainingimgs):
 # functions to separate training and test data 
 
 def splitData(folderpath, subject=None):
-	# load and process data into training and test sets
+	# load and process data into SVM training and test sets, and separate set 
+	# for AAM training
 	# the subject field being filled indicates we are leaving one subject
 	# out, rather than using stratified sampling. The subject to be left out 
-	# is specified in the subject path
-	training_paths = []
+	# is specified in the subject path.
+	paths = []
 	training_images = []
 	test_paths = []
 	test_images = []
+	# AAM_paths = []
+	# AAM_images = []
 
 	if subject == None:
-		# add every tenth file to test set
-		i = 0;
 		for root, dirs, files in walk(folderpath):
-			if len(files) > 0 and i%10!=0:
-				training_paths.append(root)
-				#print(i,'appending to training', root)
-				i += 1
-			elif len(files) > 0:
-				test_paths.append(root)
-				#print(i, 'appending to test', root)
-				i += 1 
+			if len(files) > 0:
+				paths.append(root)
+		for path in paths:
+			images = mio.import_images(path, verbose=True)
+			images = images.map(process)
+			# divide into training and test and aam -- 
+			# remove from training and aam anything in test
+			vector1 = np.arange(0,len(images),4)
+			vector2 = np.arange(0,len(images),10)
+			vector3 = np.arange(0,len(images),30)
+			vector1 = [num for num in vector1 if num not in vector2]
+			vector3 = [num for num in vector3 if num not in vector2]
+			training_images += images[vector1]
+			test_images += images[vector2]
+			AAM_images += images[vector3]
 	else:
 		# add all files that aren't in left out subject to training,
 		# add left out subject to test
 		for root, dirs, files in walk(folderpath):
 			if len(files) > 0 and subject not in root:
-				training_paths.append(root)
+				paths.append(root)
 			elif len(files) > 0:
 				test_paths.append(root)
-
-	for path in training_paths:
-		images = mio.import_images(path, verbose=True)
-		images = images.map(process)
-		training_images += images
-	for path in test_paths:
-		images = mio.import_images(path, verbose=True)
-		images = images.map(process)
-		test_images += images
+		for path in paths:
+			images = mio.import_images(path, verbose=True)
+			images = images.map(process)
+			vector1 = np.arange(0,len(images),4)
+			vector3 = np.arange(0,len(images),30)
+			training_images += images[vector1]
+			AAM_images += images[vector3]
+		for path in test_paths:
+			images = mio.import_images(path, verbose=True)
+			images = images.map(process)
+			vector2 = np.arange(0,len(images),10)
+			test_images += images[vector2]
 	training_labels = prepare_labels(training_images)
 	test_labels = prepare_labels(test_images)
 
