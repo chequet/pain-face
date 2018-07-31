@@ -56,39 +56,43 @@ def splitData(folderpath, subject=None):
 	# for AAM training
 	# the subject field being filled indicates we are leaving one subject
 	# out, rather than using stratified sampling. The subject to be left out 
-	# is specified in the subject path.
+	# is specified in the subject variable.
 	paths = []
 	training_images = []
 	test_paths = []
 	test_images = []
 	# AAM_paths = []
-	# AAM_images = []
+	AAM_images = []
 
 	if subject == None:
+		# list all folders containing images
 		for root, dirs, files in walk(folderpath):
 			if len(files) > 0:
 				paths.append(root)
+		# go through image folders and import images
 		for path in paths:
 			images = mio.import_images(path, verbose=True)
 			images = images.map(process)
-			# divide into training and test and aam -- 
+			# divide into training, test and aam -- 
 			# remove from training and aam anything in test
 			vector1 = np.arange(0,len(images),4)
 			vector2 = np.arange(0,len(images),10)
-			vector3 = np.arange(0,len(images),30)
+			vector3 = np.arange(0,len(images),31)
 			vector1 = [num for num in vector1 if num not in vector2]
 			vector3 = [num for num in vector3 if num not in vector2]
+			# add images to appropriate lists
 			training_images += images[vector1]
 			test_images += images[vector2]
 			AAM_images += images[vector3]
 	else:
-		# add all files that aren't in left out subject to training,
-		# add left out subject to test
+		# list all folders containing images that are NOT of the test subject
+		# make a separate folder of test subject images
 		for root, dirs, files in walk(folderpath):
 			if len(files) > 0 and subject not in root:
 				paths.append(root)
 			elif len(files) > 0:
 				test_paths.append(root)
+		# import training images, divide into training and AAM set (can overlap)
 		for path in paths:
 			images = mio.import_images(path, verbose=True)
 			images = images.map(process)
@@ -96,12 +100,14 @@ def splitData(folderpath, subject=None):
 			vector3 = np.arange(0,len(images),30)
 			training_images += images[vector1]
 			AAM_images += images[vector3]
+		# import test images, get subset for test
 		for path in test_paths:
 			images = mio.import_images(path, verbose=True)
 			images = images.map(process)
 			vector2 = np.arange(0,len(images),10)
 			test_images += images[vector2]
+	# get corresponding labels for images (AAM images do not need labels)
 	training_labels = prepare_labels(training_images)
 	test_labels = prepare_labels(test_images)
 
-	return training_images, training_labels, test_images, test_labels
+	return training_images, training_labels, test_images, test_labels, AAM_images
