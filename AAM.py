@@ -10,8 +10,8 @@ from menpo.feature import fast_dsift
 from menpofit.aam import LucasKanadeAAMFitter, WibergInverseCompositional
 from menpodetect import load_dlib_frontal_face_detector
 import sys
+from traceback import print_stack
 
-detect = load_dlib_frontal_face_detector()
 
 def AAMfitter(training_images, AAMtype):
 	# assume training images already loaded and preprocessed 
@@ -29,7 +29,7 @@ def generate_capp(fitter, image):
 	#print('generating canonical appearance of file ', image.path)
 	# we assume image is already preprocessed
 	# Load detector for face area
-	
+	detect = load_dlib_frontal_face_detector()
 	# Detectbounding box
 	bboxes = detect(image)
 	# initial bbox
@@ -46,13 +46,21 @@ def generate_normcapps(fitter, training_images):
 	print("Generating canonical appearance vectors...")
 	# again assume image is already preprocessed
 	capps = []
+	fails = []
 	for i in range(len(training_images)):
-		img = training_images[i]
-		j = int((i+1)/len(training_images))
-		capp = generate_capp(fitter, img)
-		# normalise this for classifier input
-		capp = capp/(np.max(capp))
-		capps.append(capp)
-		sys.stdout.write("\r[%-20s] %s%% %s/%s " % ('='*int(20*j), str(100*j), i, len(training_images)))
-		sys.stdout.flush()
-	return capps
+		try:
+			img = training_images[i]
+			j = int((i+1)/len(training_images))
+			capp = generate_capp(fitter, img)
+			# normalise this for classifier input
+			capp = capp/(np.max(capp))
+			capps.append(capp)
+			sys.stdout.write("\r[%-20s] %s%% %s/%s " % ('='*20*j, 100*j, i, len(training_images)))
+			sys.stdout.flush()
+		except Exception as e: 
+			print('failed to generate capp for image %s' %i)
+			fails.append(i)
+			print(e)
+			print_stack()
+
+	return capps, fails
