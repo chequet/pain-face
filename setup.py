@@ -47,6 +47,7 @@ def prepare_labels(trainingimgs):
 	    else:
 	        label = 0
 	    labels.append(label)
+	    file.close()
 	return labels
 
 # functions to separate training and test data 
@@ -76,7 +77,7 @@ def splitData(folderpath, subject=None):
 			# divide into training, test and aam -- 
 			# remove from training and aam anything in test
 			vector1 = np.arange(0,len(images),4)
-			vector2 = np.arange(0,len(images),10)
+			vector2 = np.arange(0,len(images),80)
 			vector3 = np.arange(0,len(images),31)
 			vector1 = [num for num in vector1 if num not in vector2]
 			vector3 = [num for num in vector3 if num not in vector2]
@@ -111,3 +112,9 @@ def splitData(folderpath, subject=None):
 	test_labels = prepare_labels(test_images)
 
 	return training_images, training_labels, test_images, test_labels, AAM_images
+
+def check_proportions(labels):
+	# find out how many samples are pain images
+	pain = [i for i in labels if i == 1]
+	prop = len(pain)/len(labels)
+	return prop
