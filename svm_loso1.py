@@ -1,11 +1,11 @@
 import warnings
 warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
-from AAM import AAMfitter, prune_labels, generate_normcapps
-from setup import splitData
+from AAM import AAMfitter, generate_normcapps
+from setup import splitData, prune_labels, check_proportions
 from sklearn.svm import LinearSVC
 from sklearn.decomposition import IncrementalPCA
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report, average_precision_score
 import numpy as np
 import menpo.io as mio
 from menpofit.aam import HolisticAAM
@@ -27,8 +27,10 @@ def LOSO(testsubj, destination, trstart=0, trfinish=None, testleaveout=False):
 		testcapps, testerrors = generate_normcapps(fitter,tst,0,len(tst), destination + 'test/')
 	mio.export_pickle(trl, destination + 'train/labels/trl.pkl')
 	mio.export_pickle(tstl, destination + 'test/labels/tstl.pkl')
+	print("training pain proportion {}".format(check_proportions(trainlabels)))
+	print("test pain proportion {}".format(check_proportions(testlabels)))
 
-def classify(path):
+def classify(path, already_pruned=False):
 	# load data -- throw error for empty import path
 	print('loading data...')
 	traincapps = mio.import_pickles(path+'train/', verbose=True)
@@ -47,17 +49,19 @@ def classify(path):
 	assert len(trainlabels) == len(traincapps) + len(trainerrors), "Inconsistent training set/labels size"
 	assert len(testlabels) == len(testcapps) + len(testerrors), "Inconsistent test set/labels size"
 
-	# remove labels for images which did not produce CAPPs
-	trainlabels = mio.import_pickle(path + 'train/labels/trl_pruned.pkl',verbose=True)
-	testlabels = mio.import_pickle(path + 'test/labels/tstl_pruned.pkl',verbose=True)
-	#print('pruning labels...')
-	#trainlabels = prune_labels(trainlabels,trainerrors)
-	#testlabels = prune_labels(testlabels,testerrors)
-	# again check nothing gone very wrong
-	assert len(trainlabels) == len(traincapps)
-	assert len(testlabels) == len(testcapps)
-	#mio.export_pickle(trainlabels,path+'train/labels/trl_pruned.pkl',overwrite=True)
-	#mio.export_pickle(testlabels,path+'test/labels/tstl_pruned.pkl', overwrite=True)
+	if already_pruned:
+		trainlabels = mio.import_pickle(path + 'train/labels/trl_pruned.pkl',verbose=True)
+		testlabels = mio.import_pickle(path + 'test/labels/tstl_pruned.pkl',verbose=True)
+	else:
+		# remove labels for images which did not produce CAPPs
+		print('pruning labels...')
+		trainlabels = prune_labels(trainlabels,trainerrors)
+		testlabels = prune_labels(testlabels,testerrors)
+		# again check nothing gone very wrong
+		assert len(trainlabels) == len(traincapps)
+		assert len(testlabels) == len(testcapps)
+		mio.export_pickle(trainlabels,path+'train/labels/trl_pruned.pkl',overwrite=True)
+		mio.export_pickle(testlabels,path+'test/labels/tstl_pruned.pkl', overwrite=True)
 
 	# sometimes CAPPs are different lengths which messes up PCA
 	# so we must pad short CAPPs with zeros
@@ -113,7 +117,6 @@ def classify(path):
 		print(tc.shape)
 		#traincapps = LazyList(tc)
 	# otherwise, assume everything worked and proceed... 	
-	#print(traincapps.shape)
 	# fit PCA model incrementally to training data
 	print('fitting PCA model...')
 	pca = IncrementalPCA(n_components=30, batch_size=30)
@@ -129,6 +132,8 @@ def classify(path):
 	pred = clf.predict(tsc)
 	# check accuracy 
 	print(accuracy_score(testlabels,pred))
-	return traincapps, tc
+	class_names = ['no pain', 'pain']
+	print(classification_report(testlabels,pred, target_names=class_names))
+	#return traincapps, tc
 
 

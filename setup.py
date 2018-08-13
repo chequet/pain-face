@@ -1,3 +1,7 @@
+import warnings
+warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
+
 import menpo.io as mio
 from conversion import landmarkConverter
 from os import walk
@@ -37,22 +41,38 @@ def prepare_images(folderpath):
 def prepare_labels(trainingimgs):
 	# load and process labels from a given directory
 	labels = []
-	for img in trainingimgs:
+	for i in range(len(trainingimgs)):
+	    img = trainingimgs[i]
 	    path = str(img.path)
 	    labelpath = path.replace('Images','Frame_Labels/PSPI').replace('.png','_facs.txt')
 	    file = open(labelpath,'r')
 	    val = float(file.read())
+	    file.close()
 	    if val != 0:
 	        label = 1
 	    else:
 	        label = 0
 	    labels.append(label)
-	    file.close()
+	    prog = 'image {}'.format(i)
+	    print(prog,end='       \r')
+	   # mio.export_pickle(label, destination + 'labels/' + str(i) + '.pkl', overwrite=True)
+	print("pain image proportion: {}".format(check_proportions(labels)), end = '             \r')
 	return labels
 
-# functions to separate training and test data 
+def check_label(image):
+	# check if image corresponds to pain classification
+	pain = False
+	path = str(img.path)
+	labelpath = path.replace('Images','Frame_Labels/PSPI').replace('.png','_facs.txt')
+	file = open(labelpath,'r')
+	val = float(file.read())
+	file.close()
+	if val!=0:
+		pain = True
+	return pain
 
-def splitData(folderpath, subject=None):
+# functions to separate training and test data 
+def splitData(folderpath, destination, subject=None):
 	# load and process data into SVM training and test sets, and separate set 
 	# for AAM training
 	# the subject field being filled indicates we are leaving one subject
@@ -94,27 +114,51 @@ def splitData(folderpath, subject=None):
 			elif len(files) > 0:
 				test_paths.append(root)
 		# import training images, divide into training and AAM set (can overlap)
+		print("\n\npreparing training images...")
+		i=0
 		for path in paths:
-			images = mio.import_images(path, verbose=True)
-			images = images.map(process)
-			vector1 = np.arange(0,len(images),4)
-			vector3 = np.arange(0,len(images),30)
-			training_images += images[vector1]
-			AAM_images += images[vector3]
+			images = mio.import_images(path)
+			labels = prepare_labels(images)
+			prop = check_proportions(labels)
+			if prop > 0:
+				images = images.map(process)
+				assert len(labels) == len(images)
+				vector1 = [i for i in range(len(labels)) if labels[i]==1 or i%5==0]
+				vector3 = [i for i in range(len(labels)) if labels[i]==1 or i%30==0]
+				training_images += images[vector1]
+				AAM_images += images[vector3]
+				mio.export_pickle(training_images, destination+'train/imgs/' + str(i) +'.pkl')
+				mio.export_pickle(AAM_images, destination+'aam/' + str(i) +'.pkl')
+				i+=1
 		# import test images, get subset for test
+		print("\n\npreparing test images...")
+		j=0
 		for path in test_paths:
-			images = mio.import_images(path, verbose=True)
-			images = images.map(process)
-			vector2 = np.arange(0,len(images),10)
-			test_images += images[vector2]
+			images = mio.import_images(path)
+			labels = prepare_labels(images)
+			prop = check_proportions(labels)
+			if prop > 0:
+				images = images.map(process)
+				vector2 = [i for i in range(len(labels)) if labels[i]==1 or i%10==0]
+				test_images += images[vector2]
+				mio.export_pickle(test_images,destination+'test/imgs/'+str(j) +'.pkl')
+				j+=1
 	# get corresponding labels for images (AAM images do not need labels)
 	training_labels = prepare_labels(training_images)
 	test_labels = prepare_labels(test_images)
-
-	return training_images, training_labels, test_images, test_labels, AAM_images
+	mio.export_pickle(training_labels,destination+'train/labels/trl.pkl')
+	mio.export_pickle(test_labels,destination+'tst/labels/tstl.pkl')
+	#return training_images, training_labels, test_images, test_labels, AAM_images
 
 def check_proportions(labels):
 	# find out how many samples are pain images
 	pain = [i for i in labels if i == 1]
-	prop = len(pain)/len(labels)
+	if len(labels) > 0:
+		prop = len(pain)/len(labels)
+	else:
+		prop = None
 	return prop
+
+def prune_labels(labels, errors):
+	p_labels = [labels[i] for i in range(len(labels)) if i not in errors]
+	return p_labels
