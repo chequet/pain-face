@@ -73,11 +73,9 @@ def check_label(image):
 
 # functions to separate training and test data 
 def splitData(folderpath, destination, subject=None):
-	# load and process data into SVM training and test sets, and separate set 
-	# for AAM training
-	# the subject field being filled indicates we are leaving one subject
-	# out, rather than using stratified sampling. The subject to be left out 
-	# is specified in the subject variable.
+	# load and process data into SVM training and test sets, and separate set for AAM training
+	# the subject field being filled indicates we are leaving one subject out, rather than using 
+	# stratified sampling. The subject to be left out is specified in the subject variable.
 	paths = []
 	training_images = []
 	test_paths = []
@@ -102,7 +100,9 @@ def splitData(folderpath, destination, subject=None):
 			vector1 = [num for num in vector1 if num not in vector2]
 			vector3 = [num for num in vector3 if num not in vector2]
 			# add images to appropriate lists
-			training_images += images[vector1]
+			#training_images += images[vector1]
+			train = images[vector1]
+			mio.export_pickle(train, destination+'train/imgs/')
 			test_images += images[vector2]
 			AAM_images += images[vector3]
 	else:
@@ -124,13 +124,13 @@ def splitData(folderpath, destination, subject=None):
 				images = images.map(process)
 				assert len(labels) == len(images)
 				vector1 = [i for i in range(len(labels)) if labels[i]==1 or i%5==0]
-				vector3 = [i for i in range(len(labels)) if labels[i]==1 or i%30==0]
+				vector3 = [i for i in range(len(labels)) if (labels[i]==1 and i%12==0) or i%31==0]
 				training_images += images[vector1]
+				train = list(images[vector1])
+				mio.export_pickle(train,destination+'train/imgs/'+str(i)+'.pkl', overwrite=True)
 				AAM_images += images[vector3]
-				mio.export_pickle(training_images, destination+'train/imgs/' + str(i) +'.pkl')
-				mio.export_pickle(AAM_images, destination+'aam/' + str(i) +'.pkl')
 				i+=1
-		# import test images, get subset for test
+		#import test images, get subset for test
 		print("\n\npreparing test images...")
 		j=0
 		for path in test_paths:
@@ -141,14 +141,15 @@ def splitData(folderpath, destination, subject=None):
 				images = images.map(process)
 				vector2 = [i for i in range(len(labels)) if labels[i]==1 or i%10==0]
 				test_images += images[vector2]
-				mio.export_pickle(test_images,destination+'test/imgs/'+str(j) +'.pkl')
 				j+=1
-	# get corresponding labels for images (AAM images do not need labels)
+	#get corresponding labels for images (AAM images do not need labels)
 	training_labels = prepare_labels(training_images)
 	test_labels = prepare_labels(test_images)
-	mio.export_pickle(training_labels,destination+'train/labels/trl.pkl')
-	mio.export_pickle(test_labels,destination+'tst/labels/tstl.pkl')
-	#return training_images, training_labels, test_images, test_labels, AAM_images
+	mio.export_pickle(training_labels,destination+'train/labels/trl.pkl', overwrite=True)
+	mio.export_pickle(test_labels,destination+'test/labels/tstl.pkl', overwrite=True)
+	mio.export_pickle(test_images,destination+'test/imgs/tstimgs.pkl', overwrite=True)
+	mio.export_pickle(AAM_images,destination+'aam/aamimgs.pkl', overwrite=True)
+	return tr, trl, tst, tstl, aam
 
 def check_proportions(labels):
 	# find out how many samples are pain images

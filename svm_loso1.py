@@ -13,22 +13,35 @@ from menpo.base import LazyList
 import time
 
 
-def LOSO(testsubj, destination, trstart=0, trfinish=None, testleaveout=False):
-	# separate training and test sets
-	tr, trl, tst, tstl, aam = splitData('/Data/Images/', testsubj)
+def LOSO(destination, loadfitter=False, testsubj=None, trstart=0, trfinish=None, testleaveout=False, loaddata= False):
+	if loaddata:
+		# load data from pickles
+		print("...loading aam data...")
+		aam = mio.import_pickle(destination+'aam/aamimgs.pkl')
+		print("...loading training images...")
+		tr = mio.import_pickles(destination+'train/imgs/',verbose=True)
+		tr = [item for sublist in tr for item in sublist]
+	else:
+		# separate training and test sets
+		tr, trl, tst, tstl, aam = splitData('/Data/Images/', destination, testsubj)
+	if loadfitter:
+		print("loading fitter...")
+		fitter = mio.import_pickle(destination+'aam/fitter.pkl')
+	else:
+		# train aam on aam dataset
+		fitter = AAMfitter(aam,HolisticAAM)
+		mio.export_pickle(fitter,destination+'aam/fitter.pkl')
 	# if no end point specified, continue to end of dataset
 	if trfinish is None:
-		trfinish = len(tr)
-	# train aam on aam dataset
-	fitter = AAMfitter(aam,HolisticAAM)
-	# generate SVM inputs
-	traincapps, trainerrors = generate_normcapps(fitter,tr,trstart,trfinish,destination + 'train/')
+		trfinish = len(tr)	
+	# generate SVM inputs in segments
+	generate_normcapps(fitter,tr,trstart,trfinish,destination+'train/')
+	if loaddata:
+		print("...loading test images...")
+		tst = mio.import_pickle(destination+'tst/imgs/tstimgs.pkl')
 	if testleaveout == False:
-		testcapps, testerrors = generate_normcapps(fitter,tst,0,len(tst), destination + 'test/')
-	mio.export_pickle(trl, destination + 'train/labels/trl.pkl')
-	mio.export_pickle(tstl, destination + 'test/labels/tstl.pkl')
-	print("training pain proportion {}".format(check_proportions(trainlabels)))
-	print("test pain proportion {}".format(check_proportions(testlabels)))
+		generate_normcapps(fitter,tst,0,len(tst), destination + 'test/')
+
 
 def classify(path, already_pruned=False):
 	# load data -- throw error for empty import path
@@ -48,7 +61,8 @@ def classify(path, already_pruned=False):
 	# check nothing has gone hopelessly wrong
 	assert len(trainlabels) == len(traincapps) + len(trainerrors), "Inconsistent training set/labels size"
 	assert len(testlabels) == len(testcapps) + len(testerrors), "Inconsistent test set/labels size"
-
+	print("training pain proportion {}".format(check_proportions(trainlabels)))
+	print("test pain proportion {}".format(check_proportions(testlabels)))
 	if already_pruned:
 		trainlabels = mio.import_pickle(path + 'train/labels/trl_pruned.pkl',verbose=True)
 		testlabels = mio.import_pickle(path + 'test/labels/tstl_pruned.pkl',verbose=True)
@@ -89,26 +103,6 @@ def classify(path, already_pruned=False):
 			pad = np.zeros(diff)
 			temp = [np.append(temp[i],pad) if i in pads else temp[i] for i in range(len(temp))]
 			tc[i:i+150] = temp
-		# for i in range(len(traincapps)):
-		# 	print('padding capp {}/{}'.format(str(i),str(len(traincapps))), end = '\r')
-		# 	time.sleep(3)
-		# 	diff = maxlen - len(traincapps[i])
-		# 	if diff != 0:
-		# 		pad = np.zeros(diff)
-		# 		tc[i] = np.append(traincapps[i],pad)
-		# 	else: 
-		# 		tc[i] = traincapps[i]
-		# pads = [i for i in range(len(lens)) if lens[i] != maxlen]
-		# # check if all short CAPPs are the same length
-		# slens = [lens[i] for i in range(len(lens)) if i in pads]
-		# assert all(x==slens[0] for x in slens), "extra inconsistent lengths, need more help!"
-		# diff = maxlen - slens[0]
-		# create vector of zeros to append
-		# pad = np.zeros(diff)
-		# append padding vector to any short CAPPS
-		# print('padding short CAPPs...')
-		# t = [np.append(traincapps[i],pad) if i in pads else traincapps[i] for i in range(len(traincapps))]
-		
 		# sanity check
 		#assert not traincapps.has_nanvalues(), "Found NaN values"
 		assert len(traincapps) == len(tc), "we lost some CAPPs somewhere"
@@ -128,12 +122,14 @@ def classify(path, already_pruned=False):
 	print('fitting classifier...')
 	clf = LinearSVC()
 	clf.fit(tca,trainlabels)
+	mio.export_pickle(clf,path+'clf/fittedclf.pkl')
 	print('making prediction...')
 	pred = clf.predict(tsc)
+	mio.export_pickle(pred,path+'clf/pred.pkl')
 	# check accuracy 
 	print(accuracy_score(testlabels,pred))
 	class_names = ['no pain', 'pain']
 	print(classification_report(testlabels,pred, target_names=class_names))
-	#return traincapps, tc
+	
 
 
