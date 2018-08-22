@@ -2,35 +2,53 @@ import warnings
 warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 from AAM import AAMfitter, generate_normcapps
-from setup import splitData, prune_labels, check_proportions
+from setup import splitData, prune_labels, check_proportions, prepare_labels
 from sklearn.svm import LinearSVC
 from sklearn.decomposition import IncrementalPCA
-from sklearn.metrics import accuracy_score, classification_report, average_precision_score
+from sklearn.metrics import accuracy_score, classification_report
 import numpy as np
 import menpo.io as mio
 from menpofit.aam import HolisticAAM
 from menpo.base import LazyList
 import time
+import joblib
 
 
-def LOSO(testsubj, destination, trstart=0, trfinish=None, testleaveout=False):
-	# separate training and test sets
-	tr, trl, tst, tstl, aam = splitData('/Data/Images/', testsubj)
+def LOSO(destination, loadfitter=False, testsubj=None, trstart=0, trfinish=None, testleaveout=False, split=False):
+	if split:
+		# separate training and test sets
+		splitData('/Data/Images/', destination, testsubj)
+
+	# load data from pickles
+	print("...loading aam data...")
+	aam = mio.import_pickle(destination+'aam/aamimgs.pkl')
+	print("aam training pain proportion {}".format(check_proportions(prepare_labels(aam))))
+	print("...loading training images...")
+	tr = joblib.load(destination+'train/imgs/trimgs.pkl')
+
+	# load or train fitter
+	if loadfitter:
+		print("loading fitter...")
+		fitter = mio.import_pickle(destination+'aam/fitter.pkl')
+	else:
+		
+		# train aam on aam dataset
+		fitter = AAMfitter(aam,HolisticAAM)
+		mio.export_pickle(fitter,destination+'aam/fitter.pkl', overwrite=True)
+
 	# if no end point specified, continue to end of dataset
 	if trfinish is None:
-		trfinish = len(tr)
-	# train aam on aam dataset
-	fitter = AAMfitter(aam,HolisticAAM)
-	# generate SVM inputs
-	traincapps, trainerrors = generate_normcapps(fitter,tr,trstart,trfinish,destination + 'train/')
-	if testleaveout == False:
-		testcapps, testerrors = generate_normcapps(fitter,tst,0,len(tst), destination + 'test/')
-	mio.export_pickle(trl, destination + 'train/labels/trl.pkl')
-	mio.export_pickle(tstl, destination + 'test/labels/tstl.pkl')
-	print("training pain proportion {}".format(check_proportions(trainlabels)))
-	print("test pain proportion {}".format(check_proportions(testlabels)))
+		trfinish = len(tr)	
 
-def classify(path, already_pruned=False):
+	# generate SVM inputs in segments
+	generate_normcapps(fitter,tr,trstart,trfinish,destination+'train/')
+	print("...loading test images...")
+	tst = mio.import_pickle(destination+'test/imgs/tstimgs.pkl')
+	if testleaveout == False:
+		generate_normcapps(fitter,tst,0,len(tst), destination + 'test/')
+
+
+def classify(path, already_pruned=False, loadpca=False):
 	# load data -- throw error for empty import path
 	print('loading data...')
 	traincapps = mio.import_pickles(path+'train/', verbose=True)
@@ -48,8 +66,10 @@ def classify(path, already_pruned=False):
 	# check nothing has gone hopelessly wrong
 	assert len(trainlabels) == len(traincapps) + len(trainerrors), "Inconsistent training set/labels size"
 	assert len(testlabels) == len(testcapps) + len(testerrors), "Inconsistent test set/labels size"
-
+	print("training pain proportion {}".format(check_proportions(trainlabels)))
+	print("test pain proportion {}".format(check_proportions(testlabels)))
 	if already_pruned:
+		print('importing labels...')
 		trainlabels = mio.import_pickle(path + 'train/labels/trl_pruned.pkl',verbose=True)
 		testlabels = mio.import_pickle(path + 'test/labels/tstl_pruned.pkl',verbose=True)
 	else:
@@ -89,51 +109,41 @@ def classify(path, already_pruned=False):
 			pad = np.zeros(diff)
 			temp = [np.append(temp[i],pad) if i in pads else temp[i] for i in range(len(temp))]
 			tc[i:i+150] = temp
-		# for i in range(len(traincapps)):
-		# 	print('padding capp {}/{}'.format(str(i),str(len(traincapps))), end = '\r')
-		# 	time.sleep(3)
-		# 	diff = maxlen - len(traincapps[i])
-		# 	if diff != 0:
-		# 		pad = np.zeros(diff)
-		# 		tc[i] = np.append(traincapps[i],pad)
-		# 	else: 
-		# 		tc[i] = traincapps[i]
-		# pads = [i for i in range(len(lens)) if lens[i] != maxlen]
-		# # check if all short CAPPs are the same length
-		# slens = [lens[i] for i in range(len(lens)) if i in pads]
-		# assert all(x==slens[0] for x in slens), "extra inconsistent lengths, need more help!"
-		# diff = maxlen - slens[0]
-		# create vector of zeros to append
-		# pad = np.zeros(diff)
-		# append padding vector to any short CAPPS
-		# print('padding short CAPPs...')
-		# t = [np.append(traincapps[i],pad) if i in pads else traincapps[i] for i in range(len(traincapps))]
-		
 		# sanity check
 		#assert not traincapps.has_nanvalues(), "Found NaN values"
 		assert len(traincapps) == len(tc), "we lost some CAPPs somewhere"
 		assert all(len(x)==len(tc[0]) for x in tc), "padding did not work"
-		#return traincapps, tc
 		print(tc.shape)
 		#traincapps = LazyList(tc)
+
 	# otherwise, assume everything worked and proceed... 	
-	# fit PCA model incrementally to training data
-	print('fitting PCA model...')
-	pca = IncrementalPCA(n_components=30, batch_size=30)
-	tca = pca.fit_transform(traincapps)
-	# generate PCA version of test data 
-	print('transforming test set...')
-	tsc = pca.transform(testcapps)
+
+	if loadpca:
+		print('loading pca data...')
+		tca = joblib.load(path+'train/pca/trainpca.pkl')
+		tsc = joblib.load(path+'test/pca/testpca.pkl')
+	else:
+		# fit PCA model incrementally to training data
+		print('fitting PCA model...')
+		pca = IncrementalPCA(n_components=30, batch_size=30)
+		tca = pca.fit_transform(traincapps)
+		joblib.dump(tca,path+'train/pca/trainpca.pkl')
+		# generate PCA version of test data 
+		print('transforming test set...')
+		tsc = pca.transform(testcapps)
+		joblib.dump(tsc,path+'test/pca/testpca.pkl')
 	# classify
 	print('fitting classifier...')
 	clf = LinearSVC()
 	clf.fit(tca,trainlabels)
+	joblib.dump(clf,path+'clf/fittedclf.pkl')
 	print('making prediction...')
 	pred = clf.predict(tsc)
+	joblib.dump(pred,path+'clf/pred.pkl')
 	# check accuracy 
 	print(accuracy_score(testlabels,pred))
 	class_names = ['no pain', 'pain']
 	print(classification_report(testlabels,pred, target_names=class_names))
-	#return traincapps, tc
+	
 
 

@@ -10,7 +10,7 @@ from menpo.feature import fast_dsift
 from menpofit.aam import LucasKanadeAAMFitter, WibergInverseCompositional
 from menpodetect import load_dlib_frontal_face_detector
 import sys
-from traceback import print_stack
+from traceback import print_stack, print_exception
 
 
 def AAMfitter(training_images, AAMtype):
@@ -35,19 +35,19 @@ def generate_capp(fitter, image):
 	# initial bbox
 	initial_bbox = bboxes[0]
 	# fit image
-	result = fitter.fit_from_bb(image, initial_bbox, max_iters=[15, 5],
-                            gt_shape=image.landmarks['landmarks'])
+	result = fitter.fit_from_bb(image, initial_bbox, max_iters=[15, 5])
+                           # gt_shape=image.landmarks['landmarks'])
 	# get CAPP from fitter object
 	capp = fitter.appearance_reconstructions(result.appearance_parameters,result.n_iters_per_scale)[-1]
 	capp = capp.as_vector()
 	return capp
 
-def generate_normcapps(fitter, training_images):
+def generate_normcapps(fitter, training_images, start, stop, path):
 	print("Generating canonical appearance vectors...")
 	# again assume image is already preprocessed
 	capps = []
 	fails = []
-	for i in range(len(training_images)):
+	for i in np.arange(start,stop):
 		try:
 			img = training_images[i]
 			j = int((i+1)/len(training_images))
@@ -55,12 +55,16 @@ def generate_normcapps(fitter, training_images):
 			# normalise this for classifier input
 			capp = capp/(np.max(capp))
 			capps.append(capp)
-			sys.stdout.write("\r[%-20s] %s%% %s/%s " % ('='*20*j, 100*j, i, len(training_images)))
+			name = str(i)
+			mio.export_pickle(capp, path + name +'.pkl',overwrite=True)
+			print("\r[%-20s] %s%% %s/%s " % (('='*20*j), 100*j, i, len(training_images)),end='                    \r')
 			sys.stdout.flush()
 		except Exception as e: 
 			print('failed to generate capp for image %s' %i)
 			fails.append(i)
 			print(e)
-			print_stack()
+			name = str(i)
+			mio.export_pickle(i, path +'errs/'+ name +'.pkl',overwrite=True)
 
 	return capps, fails
+
